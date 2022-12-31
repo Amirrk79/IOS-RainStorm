@@ -6,21 +6,20 @@
 //
 
 import Foundation
-import CoreLocation
 
 struct WeatherRequest {
     let baseUrl: URL
     
-    let location: CLLocation
+    let location: Location
     
     var latitude: Double {
-        return location.coordinate.latitude
+        return location.latitude
     }
     var longitude: Double {
-       return location.coordinate.longitude
+       return location.longitude
     }
     
     var url: URL {
-        return baseUrl.appending(queryItems: [URLQueryItem(name: "latitude", value: "\(latitude)"), URLQueryItem(name: "longitude", value: "\(longitude)")])
+        return baseUrl.appending(queryItems: [URLQueryItem(name: "latitude", value: "\(latitude)"), URLQueryItem(name: "longitude", value: "\(longitude)"), URLQueryItem(name: "hourly", value: "temperature_2m,windspeed_10m,weathercode"), URLQueryItem(name: "current_weather", value: "true")])
     }
 }

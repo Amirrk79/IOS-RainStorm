@@ -7,77 +7,139 @@
 
 import UIKit
 
+
 class RootViewController: UIViewController {
     
-    private let dayViewController: DayViewController = {
-        guard let dayViewController = UIStoryboard.main.instantiateViewController(withIdentifier: DayViewController.storyboardIndentifier) as? DayViewController else {
+    private enum AlertType {
+        case noAuthorizedToGetLocation
+        case failedToRequestLocation
+        case noWeatherDataAvailable
+    }
+    
+    var viewModel: RootViewModel? {
+        didSet {
+            guard let viewModel = viewModel else {
+                return
+            }
+            setupViewModel(viewModel: viewModel)
+        }
+    }
+    
+    private func setupViewModel(viewModel: RootViewModel) {
+        viewModel.didFetchWeatherData = { [weak self] (result) in
+            switch result {
+            case .failure(let error):
+                let alertType: AlertType
+                
+                switch error {
+                case .noAuthorizedToGetLocation:
+                    alertType = .noAuthorizedToGetLocation
+                case .noWeatherDataAvailable:
+                    alertType = .noWeatherDataAvailable
+                case .failedToRequestLocation:
+                    alertType = .failedToRequestLocation
+                }
+                
+                self?.showAlert(alertType: alertType)
+                
+            case .success(let data):
+                let headerViewModel = HeaderViewModel(currentWeatherData: data.currentWeatherData)
+                let contentViewModel = ContentViewModel(hourlyWeatherData: data.hourlyData)
+                
+                self?.headerViewController.viewModel = headerViewModel
+                self?.contentViewController.viewModel = contentViewModel
+                
+            }
+            
+        }
+    }
+    
+    private func showAlert(alertType: AlertType) {
+        var alertMessage: String
+        var alertTitle: String
+        
+        switch alertType {
+        case .noAuthorizedToGetLocation:
+            alertTitle = "Unable to Fetch Weather Data for Your Location"
+            alertMessage = "Rainstorm is not authorized to access your current location"
+        case .noWeatherDataAvailable:
+            alertTitle = "Unable to Fetch Weather Data"
+            alertMessage = "The application is unable to fetch weather data. Please make sure your device is connected over Wi-Fi or cellular."
+        case .failedToRequestLocation:
+            alertTitle = "Unable to Fetch Weather Data"
+            alertMessage = "Rainstorm is not able to fetch your current location due to a technical issue."
+        }
+        
+        let alertController = UIAlertController(title: alertTitle, message: alertMessage, preferredStyle: .alert)
+        let alertCancelAction = UIAlertAction(title: "Ok", style: .cancel, handler: nil)
+        alertController.addAction(alertCancelAction)
+        DispatchQueue.main.async {
+        self.present(alertController, animated: true)
+        }
+    }
+    
+    private let headerViewController: HeaderViewController = {
+        guard let headerViewController = UIStoryboard.main.instantiateViewController(withIdentifier: HeaderViewController.storyboardIndentifier) as? HeaderViewController else {
            fatalError("Failed to instantiate DayViewController")
         }
         
-        // configure day view controller
-        dayViewController.view.translatesAutoresizingMaskIntoConstraints = false
+        // configure header view controller
+        headerViewController.view.translatesAutoresizingMaskIntoConstraints = false
         
-        return dayViewController
+        return headerViewController
     }()
     
-    private let weakViewController: WeakViewController = {
-        guard let weakViewController = UIStoryboard.main.instantiateViewController(withIdentifier: WeakViewController.storyboardIndentifier) as? WeakViewController else {
+    private lazy var contentViewController: ContentViewController = {
+        guard let contentViewController = UIStoryboard.main.instantiateViewController(withIdentifier: ContentViewController.storyboardIndentifier) as? ContentViewController else {
             fatalError("Failed to instantiate WeakViewController")
         }
         
-        // configure weak view controller
-        weakViewController.view.translatesAutoresizingMaskIntoConstraints = false
+        // configure content view controller
+        contentViewController.delegate = self
+        contentViewController.view.translatesAutoresizingMaskIntoConstraints = false
         
-        return weakViewController
+        return contentViewController
     }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         setupChildViewControllers()
-        fetchWeatherData()
+        //print(viewModel ?? "nothing to show here")
+        viewModel?.refresh()
     }
 
     private func setupChildViewControllers() {
-        addChild(dayViewController)
-        addChild(weakViewController)
+        addChild(headerViewController)
+        addChild(contentViewController)
         
-        view.addSubview(dayViewController.view)
-        view.addSubview(weakViewController.view)
+        view.addSubview(headerViewController.view)
+        view.addSubview(contentViewController.view)
         
-        dayViewController.view.topAnchor.constraint(equalTo: view.topAnchor).isActive = true
-        dayViewController.view.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
-        dayViewController.view.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
-        dayViewController.view.heightAnchor.constraint(equalToConstant: Layout.DayView.height).isActive = true
+        headerViewController.view.topAnchor.constraint(equalTo: view.topAnchor).isActive = true
+        headerViewController.view.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
+        headerViewController.view.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
         
-        weakViewController.view.topAnchor.constraint(equalTo: dayViewController.view.bottomAnchor).isActive = true
-        weakViewController.view.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
-        weakViewController.view.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
-        weakViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
+        contentViewController.view.topAnchor.constraint(equalTo: headerViewController.view.bottomAnchor).isActive = true
+        contentViewController.view.leftAnchor.constraint(equalTo: view.leftAnchor).isActive = true
+        contentViewController.view.rightAnchor.constraint(equalTo: view.rightAnchor).isActive = true
+        contentViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
         
-    }
-    
-    private func fetchWeatherData() {
-       
-        
-        let weatherReq = WeatherRequest(baseUrl: WeatherService.BASE_URL, location: Defaults.location)
-        
-        URLSession.shared.dataTask(with: weatherReq.url, completionHandler: {(data, response, error) in
-            if let error = error {
-                print("Request has been failed cause \(error)")
-            } else if let response = response {
-                print(response)
-            }
-        }).resume()
     }
 
 }
 
 
-extension RootViewController {
-    fileprivate enum Layout {
-        enum DayView {
-            static let height: CGFloat = 200.0
-        }
+extension RootViewController: ContentViewControllerDelegate {
+    func controllerDidRefresh(_ controller: ContentViewController) {
+        viewModel?.refresh()
     }
 }
+
+//extension RootViewController {
+//    fileprivate enum Layout {
+//        enum DayView {
+//            static let height: CGFloat = 200.0
+//        }
+//    }
+//}
